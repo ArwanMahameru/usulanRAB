@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REKAP RAB - Sistem Manajemen Usulan & Anggaran</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX) untuk Export ke Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- jsPDF & jsPDF-AutoTable untuk Export ke PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- Notifikasi Toast (Pengganti Alert) -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+    <!-- Header / Navigasi Utama -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo & Judul -->
+                <div class="flex items-center gap-3">
+                    <div class="bg-brand-600 text-white p-2 rounded-xl shadow-sm">
+                        <i data-lucide="file-spreadsheet" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg text-slate-900 leading-tight">REKAP RAB</h1>
+                        <p class="text-xs text-slate-500 flex items-center gap-1">
+                            <span id="db-status-dot" class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                            <span id="db-status-text">Mode Lokal (Demo)</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Navigasi Tab Role -->
+                <nav class="flex items-center gap-1 sm:gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button onclick="switchRole('user')" id="nav-user" class="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all bg-white text-brand-700 shadow-sm">
+                        <i data-lucide="clipboard-edit" class="w-4 h-4"></i>
+                        <span>Halaman User</span>
+                    </button>
+                    <button onclick="switchRole('admin')" id="nav-admin" class="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        <span>Halaman Admin</span>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Konten Utama -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+
+        <!-- =================================================================== -->
+        <!-- 1. HALAMAN USER (INPUT RAB, PENCARIAN & EXPORT)                     -->
+        <!-- =================================================================== -->
+        <section id="view-user" class="space-y-6">
+            
+            <!-- Banner Info -->
+            <div class="bg-gradient-to-r from-brand-700 to-brand-900 rounded-2xl p-6 text-white shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i data-lucide="file-plus-2" class="w-5 h-5 text-brand-100"></i>
+                        Input & Rekap Usulan RAB Toko
+                    </h2>
+                    <p class="text-brand-100 text-sm mt-1">Pilih Kode Toko yang tersedia, tambahkan item barang, dan simpan ke database. <strong class="text-white underline">Kode toko yang sudah diinput tidak dapat digunakan kembali.</strong></p>
+                </div>
+                <button onclick="syncDataFromCloud()" class="bg-white/15 hover:bg-white/25 text-white border border-white/20 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition shrink-0">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" id="sync-icon-user"></i>
+                    <span>Sinkronkan Data</span>
+                </button>
+            </div>
+
+            <!-- Form Input RAB -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="border-b border-slate-100 bg-slate-50/50 px-6 py-4 flex justify-between items-center">
+                    <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                        <i data-lucide="edit-3" class="w-4 h-4 text-brand-600"></i>
+                        Formulir Pengajuan RAB Baru
+                    </h3>
+                    <span class="text-xs font-medium px-2.5 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100">
+                        1 Toko = 1 Kali Pengajuan
+                    </span>
+                </div>
+
+                <form id="form-rab" onsubmit="handleSaveRAB(event)" class="p-6 space-y-6">
+                    <!-- Informasi Header Toko -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">No. RAB <span class="text-slate-400 font-normal lowercase">(opsional)</span></label>
+                            <input type="text" id="rab-norab" placeholder="Kosongkan = Otomatis" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm uppercase font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Kode Toko <span class="text-red-500">*</span></label>
+                            <select id="rab-kodetoko" onchange="handleStoreSelect(this.value)" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition">
+                                <option value="">-- Pilih Kode Toko --</option>
+                            </select>
+                            <p id="store-warning" class="text-xs text-red-600 mt-1 hidden flex items-center gap-1">
+                                <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Kode toko ini sudah pernah diinput!
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Nama Toko</label>
+                            <input type="text" id="rab-namatoko" readonly placeholder="Otomatis terisi..." class="w-full rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-700 font-medium outline-none cursor-not-allowed">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Usulan <span class="text-red-500">*</span></label>
+                            <input type="date" id="rab-tgl" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Keterangan Toko / Project</label>
+                            <input type="text" id="rab-ket-toko" placeholder="Contoh: Renovasi Area Kasir" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition">
+                        </div>
+                    </div>
+
+                    <!-- Daftar Item Barang -->
+                    <div class="border-t border-slate-100 pt-5">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-800">Rincian Item Barang Usulan</h4>
+                                <p class="text-xs text-slate-500">Pilih deskripsi barang dari Master Barang, masukkan Qty dan keterangan item.</p>
+                            </div>
+                            <button type="button" onclick="addRabItemRow()" class="bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                Tambah Baris Barang
+                            </button>
+                        </div>
+
+                        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                                        <th class="py-3 px-4 w-12 text-center">No</th>
+                                        <th class="py-3 px-4 min-w-[260px]">Deskripsi Barang (Master) <span class="text-red-500">*</span></th>
+                                        <th class="py-3 px-4 w-32">Qty <span class="text-red-500">*</span></th>
+                                        <th class="py-3 px-4 min-w-[220px]">Keterangan Item</th>
+                                        <th class="py-3 px-4 w-16 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rab-items-container" class="divide-y divide-slate-100 text-sm">
+                                    <!-- Baris item akan di-generate via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tombol Submit -->
+                    <div class="flex justify-end items-center gap-3 pt-2 border-t border-slate-100">
+                        <button type="button" onclick="resetRabForm()" class="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-medium transition">
+                            Reset Form
+                        </button>
+                        <button type="submit" id="btn-submit-rab" class="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2 transition">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>Simpan Usulan RAB</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tabel Hasil Rekap RAB (Pencarian & Export) -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
+                            <i data-lucide="list-checks" class="w-5 h-5 text-brand-600"></i>
+                            Pencarian & Hasil Inputan RAB Toko
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Klik pada baris <strong>Kode Toko</strong> untuk melihat rincian item barang RAB. Total <span id="total-rab-count" class="font-semibold text-slate-700">0</span> toko tercatat.</p>
+                    </div>
+
+                    <!-- Filter Pencarian & Tombol Export -->
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                        <div class="relative flex-grow sm:w-72">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input type="text" id="search-rab" onkeyup="renderRabTable()" placeholder="Cari kode toko / No RAB / ket..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportAllRabToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 shadow-sm transition flex-1 sm:flex-initial">
+                                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                                <span>Export Semua RAB</span>
+                            </button>
+                            <button onclick="exportAllRabToCSV()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 shadow-sm transition flex-1 sm:flex-initial">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                <span>CSV Semua</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daftar Ringkasan Kode Toko (Klik untuk Detail) -->
+                <!-- Tabel Ringkasan Pencarian RAB (Kode Toko, Tanggal Pengajuan, No RAB, Keterangan) -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                <th class="py-3.5 px-5 w-36">Kode Toko</th>
+                                <th class="py-3.5 px-5 w-44">Tanggal Pengajuan</th>
+                                <th class="py-3.5 px-5 w-48">No RAB</th>
+                                <th class="py-3.5 px-5">Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rab-store-list" class="divide-y divide-slate-100 text-sm">
+                            <!-- Daftar ringkasan RAB per toko di-render di sini -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Panel Detail RAB Toko yang Dipilih -->
+                <div id="rab-detail-panel" class="hidden border-t border-slate-200 bg-slate-50/70 p-6 transition-all">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-4 border-b border-slate-200">
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span id="detail-kodetoko" class="px-3 py-1 rounded-lg bg-brand-600 text-white font-bold text-sm"></span>
+                                <span id="detail-norab" class="px-2.5 py-1 rounded-lg bg-slate-200 text-slate-800 font-mono font-semibold text-xs"></span>
+                                <h4 id="detail-namatoko" class="font-bold text-slate-900 text-base"></h4>
+                            </div>
+                            <p class="text-xs text-slate-600 mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+                                <span><strong>Tgl Pengajuan:</strong> <span id="detail-tgl"></span></span>
+                                <span><strong>Keterangan:</strong> <span id="detail-kettoko"></span></span>
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="exportDetailRabToPDF()" class="text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Export PDF
+                            </button>
+                            <button onclick="exportDetailRabToExcel()" class="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Export Excel
+                            </button>
+                            <button onclick="exportDetailRabToCSV()" class="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> CSV Detail
+                            </button>
+                            <button onclick="closeRabDetail()" class="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white border border-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1 transition">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i> Tutup Detail
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto bg-white rounded-xl border border-slate-200">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                    <th class="py-3 px-4 w-14 text-center">No</th>
+                                    <th class="py-3 px-4 w-32">PLU</th>
+                                    <th class="py-3 px-4">Deskripsi Barang</th>
+                                    <th class="py-3 px-4 w-28 text-center">Qty</th>
+                                    <th class="py-3 px-4">Keterangan Item</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detail-items-body" class="divide-y divide-slate-100 text-sm">
+                                <!-- Rincian item RAB toko terpilih -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- =================================================================== -->
+        <!-- 2. HALAMAN ADMIN (MASTER BARANG, MASTER TOKO & KONEKSI SPREADSHEET) -->
+        <!-- =================================================================== -->
+        <section id="view-admin" class="hidden space-y-6">
+
+            <!-- Panel Login Admin Sederhana (Opsional / Kunci Pengaman) -->
+            <div id="admin-lock-screen" class="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center my-10">
+                <div class="w-14 h-14 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="lock" class="w-7 h-7"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800">Akses Halaman Admin</h2>
+                <p class="text-sm text-slate-500 mt-1 mb-6">Masukkan PIN Admin untuk mengelola Master Barang, Master Toko, dan Koneksi Spreadsheet.</p>
+                <form onsubmit="unlockAdmin(event)" class="space-y-4">
+                    <input type="password" id="admin-pin-input" placeholder="Masukkan PIN (Default: 1234)" required class="w-full text-center tracking-widest text-lg font-bold rounded-xl border border-slate-300 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none">
+                    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition shadow-sm">
+                        Buka Panel Admin
+                    </button>
+                </form>
+            </div>
+
+            <!-- Konten Utama Admin (Terbuka setelah PIN benar) -->
+            <div id="admin-dashboard" class="hidden space-y-6">
+                
+                <!-- Header Admin & Sub-Navigasi -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <i data-lucide="database" class="w-5 h-5 text-brand-600"></i>
+                            Panel Administrator & Master Data
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Kelola referensi Master Barang, Master Toko, dan integrasi Google Spreadsheet.</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="switchAdminTab('barang')" id="tab-admin-barang" class="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-600 text-white shadow-sm transition">
+                            Master Barang
+                        </button>
+                        <button onclick="switchAdminTab('toko')" id="tab-admin-toko" class="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">
+                            Master Toko
+                        </button>
+                        <button onclick="switchAdminTab('spreadsheet')" id="tab-admin-spreadsheet" class="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex items-center gap-1.5">
+                            <i data-lucide="settings" class="w-4 h-4"></i>
+                            Database Spreadsheet
+                        </button>
+                        <button onclick="lockAdmin()" title="Kunci Halaman Admin" class="p-2 rounded-xl border border-slate-200 text-slate-500 hover:text-red-600 hover:bg-red-50 transition">
+                            <i data-lucide="log-out" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 1: MASTER BARANG (PLU, DESKRIPSI BARANG) -->
+                <div id="admin-panel-barang" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Form Input Master Barang -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 h-fit">
+                        <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="package-plus" class="w-5 h-5 text-brand-600"></i>
+                            Tambah Master Barang
+                        </h3>
+                        <form onsubmit="handleAddBarang(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Kode PLU <span class="text-red-500">*</span></label>
+                                <input type="text" id="input-plu" required placeholder="Contoh: 1002345" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Deskripsi Barang <span class="text-red-500">*</span></label>
+                                <input type="text" id="input-deskripsi-barang" required placeholder="Contoh: LAMPU LED PHILIPS 18W" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition">
+                                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                Simpan Master Barang
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Tabel Master Barang -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h3 class="font-bold text-slate-800">Daftar Master Barang</h3>
+                                <p class="text-xs text-slate-500">Total <span id="count-barang" class="font-semibold">0</span> item barang terdaftar</p>
+                            </div>
+                            <input type="text" id="search-barang" onkeyup="renderMasterBarangTable()" placeholder="Cari PLU / Deskripsi..." class="w-full sm:w-60 rounded-xl border border-slate-300 px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div class="overflow-x-auto max-h-[450px]">
+                            <table class="w-full text-left border-collapse">
+                                <thead class="sticky top-0 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                                    <tr>
+                                        <th class="py-3 px-4 w-16">No</th>
+                                        <th class="py-3 px-4 w-36">PLU</th>
+                                        <th class="py-3 px-4">Deskripsi Barang</th>
+                                        <th class="py-3 px-4 w-20 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-barang-body" class="divide-y divide-slate-100 text-sm"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: MASTER TOKO (KODETOKO, NAMA TOKO) -->
+                <div id="admin-panel-toko" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Form Input Master Toko -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 h-fit">
+                        <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="store" class="w-5 h-5 text-brand-600"></i>
+                            Tambah Master Toko
+                        </h3>
+                        <form onsubmit="handleAddToko(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Kode Toko <span class="text-red-500">*</span></label>
+                                <input type="text" id="input-kodetoko" required placeholder="Contoh: T001" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm uppercase focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Toko <span class="text-red-500">*</span></label>
+                                <input type="text" id="input-namatoko" required placeholder="Contoh: TOKO SUDIRMAN JAKARTA" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition">
+                                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                Simpan Master Toko
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Tabel Master Toko -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h3 class="font-bold text-slate-800">Daftar Master Toko</h3>
+                                <p class="text-xs text-slate-500">Total <span id="count-toko" class="font-semibold">0</span> toko terdaftar. Klik <strong>Reset RAB</strong> untuk membuka kembali akses input kode toko.</p>
+                            </div>
+                            <input type="text" id="search-toko" onkeyup="renderMasterTokoTable()" placeholder="Cari Kode / Nama Toko..." class="w-full sm:w-60 rounded-xl border border-slate-300 px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div class="overflow-x-auto max-h-[450px]">
+                            <table class="w-full text-left border-collapse">
+                                <thead class="sticky top-0 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                                    <tr>
+                                        <th class="py-3 px-4 w-14">No</th>
+                                        <th class="py-3 px-4 w-28">Kode Toko</th>
+                                        <th class="py-3 px-4">Nama Toko</th>
+                                        <th class="py-3 px-4 w-32 text-center">Status RAB</th>
+                                        <th class="py-3 px-4 w-36 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-toko-body" class="divide-y divide-slate-100 text-sm"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: PENGATURAN DATABASE GOOGLE SPREADSHEET -->
+                <div id="admin-panel-spreadsheet" class="hidden space-y-6">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2 mb-2">
+                            <i data-lucide="cloud" class="w-5 h-5 text-brand-600"></i>
+                            Konfigurasi Database Google Spreadsheet
+                        </h3>
+                        <p class="text-sm text-slate-600 mb-6">
+                            Aplikasi ini mendukung penyimpanan langsung ke <strong>Google Spreadsheet</strong> menggunakan Google Apps Script Web App. Jika URL kosong, aplikasi berjalan menggunakan penyimpanan lokal browser (LocalStorage).
+                        </p>
+
+                        <div class="space-y-4 max-w-3xl">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 uppercase mb-1.5">URL Web App Google Apps Script</label>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    <input type="url" id="gas-url-input" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="flex-grow rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                    <button onclick="saveGasUrl()" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shrink-0">
+                                        Simpan & Hubungkan
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-3 pt-2">
+                        <button onclick="syncDataFromCloud()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                            Tarik Data dari Spreadsheet
+                        </button>
+                        <button onclick="resetDemoData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                            Muat Ulang Data Contoh (Demo)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Panduan & Kode Google Apps Script -->
+                        <div class="mt-8 pt-6 border-t border-slate-200">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="font-bold text-slate-800 text-sm">Panduan Setup Google Spreadsheet (3 Langkah Mudah):</h4>
+                                <button onclick="copyGasCode()" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                    Salin Kode Apps Script
+                                </button>
+                            </div>
+                            <ol class="list-decimal list-inside text-xs text-slate-600 space-y-1.5 mb-4">
+                                <li>Buat file <strong>Google Spreadsheet</strong> baru.</li>
+                                <li>Klik menu <strong>Ekstensi (Extensions) &gt; Apps Script</strong>.</li>
+                                <li>Hapus semua kode yang ada, lalu tempel (paste) kode di bawah ini dan klik <strong>Simpan</strong>.</li>
+                                <li>Klik <strong>Terapkan (Deploy) &gt; Deployment Baru</strong>, pilih jenis <strong>Aplikasi Web (Web App)</strong>, ubah akses menjadi <strong>Siapa saja (Anyone)</strong>, lalu salin URL Web App yang muncul ke kolom di atas.</li>
+                            </ol>
+
+                            <pre id="gas-script-code" class="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto font-mono leading-relaxed max-h-72 select-all">// KODE GOOGLE APPS SCRIPT UNTUK DATABASE REKAP RAB
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  setupSheets(ss);
+  
+  var barangData = getSheetData(ss.getSheetByName('Master_Barang'));
+  var tokoData = getSheetData(ss.getSheetByName('Master_Toko'));
+  var rabData = getSheetData(ss.getSheetByName('Rekap_RAB'));
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    status: 'success',
+    barang: barangData,
+    toko: tokoData,
+    rab: rabData
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  setupSheets(ss);
+  var payload = JSON.parse(e.postData.contents);
+  
+  if (payload.action === 'add_barang') {
+    var sheet = ss.getSheetByName('Master_Barang');
+    sheet.appendRow([payload.data.plu, payload.data.deskripsi]);
+  } 
+  else if (payload.action === 'delete_barang') {
+    deleteRowByCol(ss.getSheetByName('Master_Barang'), 0, payload.plu);
+  }
+  else if (payload.action === 'add_toko') {
+    var sheet = ss.getSheetByName('Master_Toko');
+    sheet.appendRow([payload.data.kodetoko, payload.data.namatoko]);
+  }
+  else if (payload.action === 'delete_toko') {
+    deleteRowByCol(ss.getSheetByName('Master_Toko'), 0, payload.kodetoko);
+  }
+  else if (payload.action === 'reset_rab_toko') {
+    var logSheet = ss.getSheetByName('Log_Reset_RAB');
+    logSheet.appendRow([new Date(), payload.kodetoko, payload.reason]);
+  }
+  else if (payload.action === 'add_rab') {
+    var sheet = ss.getSheetByName('Rekap_RAB');
+    var seq = payload.seq || 1;
+    payload.items.forEach(function(item) {
+      sheet.appendRow([
+        item.no_rab, item.kodetoko, item.namatoko, item.ket_toko, 
+        item.tgl_usulan, item.plu, item.deskripsi, item.qty, item.ket_item
+      ]);
+    });
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function setupSheets(ss) {
+  if (!ss.getSheetByName('Master_Barang')) {
+    ss.insertSheet('Master_Barang').appendRow(['plu', 'deskripsi']);
+  }
+  if (!ss.getSheetByName('Master_Toko')) {
+    ss.insertSheet('Master_Toko').appendRow(['kodetoko', 'namatoko']);
+  }
+  if (!ss.getSheetByName('Rekap_RAB')) {
+    ss.insertSheet('Rekap_RAB').appendRow(['no_rab', 'kodetoko', 'namatoko', 'ket_toko', 'tgl_usulan', 'plu', 'deskripsi', 'qty', 'ket_item']);
+  }
+  if (!ss.getSheetByName('Log_Reset_RAB')) {
+    ss.insertSheet('Log_Reset_RAB').appendRow(['waktu_reset', 'kodetoko', 'keterangan_reset']);
+  }
+}
+
+function getSheetData(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return [];
+  var headers = rows[0];
+  return rows.slice(1).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h, i) { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function deleteRowByCol(sheet, colIndex, val) {
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][colIndex]) === String(val)) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+}</pre>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal Dialog Konfirmasi Reset RAB (Wajib Input Alasan) -->
+    <div id="modal-reset-rab" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
+            <div class="flex items-start gap-3">
+                <div class="bg-amber-100 text-amber-600 p-2.5 rounded-xl shrink-0">
+                    <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-900 text-base">Reset Status Input RAB Toko</h3>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Data RAB lama untuk toko <strong id="reset-modal-store-label" class="text-slate-800"></strong> <strong>tidak akan dihapus</strong>. Toko ini akan dibuka kembali agar dapat mengajukan RAB baru.
+                    </p>
+                </div>
+            </div>
+            <form onsubmit="confirmResetRabToko(event)" class="space-y-4">
+                <input type="hidden" id="reset-modal-kodetoko">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase mb-1.5">Alasan / Keterangan Reset <span class="text-red-500">*</span></label>
+                    <textarea id="reset-modal-reason" rows="3" required placeholder="Contoh: Pengajuan susulan penambahan barang area gudang..." class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeResetModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition">
+                        Batal
+                    </button>
+                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition">
+                        Konfirmasi & Buka Akses
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 gap-2">
+            <p>&copy; 2026 Sistem Rekap RAB & Manajemen Anggaran Toko.</p>
+            <p>PIN Default Admin: <span class="font-mono font-semibold text-slate-700">1234</span></p>
+        </div>
+    </footer>
+
+    <!-- =================================================================== -->
+    <!-- LOGIKA JAVASCRIPT APLIKASI                                          -->
+    <!-- =================================================================== -->
+    <script>
+        // State Global Aplikasi
+        let state = {
+            masterBarang: [],
+            masterToko: [],
+            rekapRab: [],
+            resetLogs: [],
+            gasUrl: localStorage.getItem('rab_gas_url') || '',
+            isAdminUnlocked: false,
+            selectedDetailNoRab: null
+        };
+
+        // Data Awal (Dummy/Demo) jika database masih kosong
+        const defaultBarang = [
+            { plu: '100101', deskripsi: 'LAMPU LED DOWNLIGHT 18W PUTIH' },
+            { plu: '100102', deskripsi: 'KABEL NYM 2X1.5 MM (PER METER)' },
+            { plu: '100103', deskripsi: 'CAT TEMBOK INTERIOR PUTIH 5KG' },
+            { plu: '100104', deskripsi: 'STOP KONTAK 4 LUBANG + KABEL 3M' },
+            { plu: '100105', deskripsi: 'RAK DISPLAY GONDOLA SINGLE 180CM' }
+        ];
+
+        const defaultToko = [
+            { kodetoko: 'T001', namatoko: 'TOKO SUDIRMAN JAKARTA' },
+            { kodetoko: 'T002', namatoko: 'TOKO DAGO BANDUNG' },
+            { kodetoko: 'T003', namatoko: 'TOKO TUNJUNGAN SURABAYA' },
+            { kodetoko: 'T004', namatoko: 'TOKO MALIOBORO YOGYAKARTA' }
+        ];
+
+        const defaultRab = [
+            {
+                no_rab: 'RAB-20261125-T001',
+                kodetoko: 'T001',
+                namatoko: 'TOKO SUDIRMAN JAKARTA',
+                ket_toko: 'Peremajaan Penerangan Area Sales',
+                tgl_usulan: '2026-11-25',
+                plu: '100101',
+                deskripsi: 'LAMPU LED DOWNLIGHT 18W PUTIH',
+                qty: 12,
+                ket_item: 'Ganti lampu mati di lorong 1 & 2'
+            },
+            {
+                no_rab: 'RAB-20261125-T001',
+                kodetoko: 'T001',
+                namatoko: 'TOKO SUDIRMAN JAKARTA',
+                ket_toko: 'Peremajaan Penerangan Area Sales',
+                tgl_usulan: '2026-11-25',
+                plu: '100102',
+                deskripsi: 'KABEL NYM 2X1.5 MM (PER METER)',
+                qty: 25,
+                ket_item: 'Instalasi jalur baru'
+            }
+        ];
+
+        // Inisialisasi Aplikasi saat Halaman Dimuat
+        window.onload = function() {
+            lucide.createIcons();
+            document.getElementById('rab-tgl').valueAsDate = new Date();
+            document.getElementById('gas-url-input').value = state.gasUrl;
+
+            loadLocalData();
+            updateConnectionBadge();
+
+            if (state.gasUrl) {
+                syncDataFromCloud();
+            } else {
+                refreshAllViews();
+            }
+        };
+
+        // Memuat data dari LocalStorage
+        function loadLocalData() {
+            const savedBarang = localStorage.getItem('rab_master_barang');
+            const savedToko = localStorage.getItem('rab_master_toko');
+            const savedRab = localStorage.getItem('rab_rekap_data');
+            const savedLogs = localStorage.getItem('rab_reset_logs');
+
+            state.masterBarang = savedBarang ? JSON.parse(savedBarang) : [...defaultBarang];
+            state.masterToko = savedToko ? JSON.parse(savedToko) : [...defaultToko];
+            state.rekapRab = savedRab ? JSON.parse(savedRab) : [...defaultRab];
+            state.resetLogs = savedLogs ? JSON.parse(savedLogs) : [];
+
+            saveLocalData();
+        }
+
+        function saveLocalData() {
+            localStorage.setItem('rab_master_barang', JSON.stringify(state.masterBarang));
+            localStorage.setItem('rab_master_toko', JSON.stringify(state.masterToko));
+            localStorage.setItem('rab_rekap_data', JSON.stringify(state.rekapRab));
+            localStorage.setItem('rab_reset_logs', JSON.stringify(state.resetLogs));
+        }
+
+        function resetDemoData() {
+            state.masterBarang = [...defaultBarang];
+            state.masterToko = [...defaultToko];
+            state.rekapRab = [...defaultRab];
+            state.resetLogs = [];
+            saveLocalData();
+            refreshAllViews();
+            showToast('Data demo berhasil dimuat ulang!', 'success');
+        }
+
+        // Update Indikator Status Koneksi Spreadsheet
+        function updateConnectionBadge() {
+            const dot = document.getElementById('db-status-dot');
+            const text = document.getElementById('db-status-text');
+            if (state.gasUrl) {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse';
+                text.textContent = 'Terhubung Google Spreadsheet';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-amber-500 inline-block';
+                text.textContent = 'Mode Lokal (Browser Storage)';
+            }
+        }
+
+        // Refresh Seluruh Tampilan UI
+        function refreshAllViews() {
+            populateStoreDropdown();
+            resetRabItemsContainer();
+            renderRabTable();
+            renderMasterBarangTable();
+            renderMasterTokoTable();
+            lucide.createIcons();
+        }
+
+        // ===================================================================
+        // NAVIGASI ROLE & TAB ADMIN
+        // ===================================================================
+        function switchRole(role) {
+            const viewUser = document.getElementById('view-user');
+            const viewAdmin = document.getElementById('view-admin');
+            const navUser = document.getElementById('nav-user');
+            const navAdmin = document.getElementById('nav-admin');
+
+            if (role === 'user') {
+                viewUser.classList.remove('hidden');
+                viewAdmin.classList.add('hidden');
+                navUser.className = 'flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all bg-white text-brand-700 shadow-sm';
+                navAdmin.className = 'flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900';
+                refreshAllViews();
+            } else {
+                viewUser.classList.add('hidden');
+                viewAdmin.classList.remove('hidden');
+                navAdmin.className = 'flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all bg-white text-brand-700 shadow-sm';
+                navUser.className = 'flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900';
+                
+                if (state.isAdminUnlocked) {
+                    document.getElementById('admin-lock-screen').classList.add('hidden');
+                    document.getElementById('admin-dashboard').classList.remove('hidden');
+                    renderMasterBarangTable();
+                    renderMasterTokoTable();
+                } else {
+                    document.getElementById('admin-lock-screen').classList.remove('hidden');
+                    document.getElementById('admin-dashboard').classList.add('hidden');
+                }
+            }
+            lucide.createIcons();
+        }
+
+        function unlockAdmin(e) {
+            e.preventDefault();
+            const pin = document.getElementById('admin-pin-input').value;
+            if (pin === '1234') {
+                state.isAdminUnlocked = true;
+                document.getElementById('admin-pin-input').value = '';
+                document.getElementById('admin-lock-screen').classList.add('hidden');
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                renderMasterBarangTable();
+                renderMasterTokoTable();
+                showToast('Selamat datang di Panel Admin!', 'success');
+                lucide.createIcons();
+            } else {
+                showToast('PIN Admin salah! Coba lagi (Default: 1234).', 'error');
+            }
+        }
+
+        function lockAdmin() {
+            state.isAdminUnlocked = false;
+            document.getElementById('admin-lock-screen').classList.remove('hidden');
+            document.getElementById('admin-dashboard').classList.add('hidden');
+            showToast('Panel Admin dikunci.', 'info');
+        }
+
+        function switchAdminTab(tab) {
+            const tabs = ['barang', 'toko', 'spreadsheet'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-admin-${t}`);
+                const panel = document.getElementById(`admin-panel-${t}`);
+                if (t === tab) {
+                    btn.className = 'px-4 py-2 rounded-xl text-sm font-semibold bg-brand-600 text-white shadow-sm transition flex items-center gap-1.5';
+                    panel.classList.remove('hidden');
+                } else {
+                    btn.className = 'px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition flex items-center gap-1.5';
+                    panel.classList.add('hidden');
+                }
+            });
+            lucide.createIcons();
+        }
+
+        // ===================================================================
+        // LOGIKA HALAMAN USER (INPUT RAB, VALIDASI TOKO, PENCARIAN & DETAIL)
+        // ===================================================================
+        function getStoreSubmissionCount(kodetoko) {
+            const code = String(kodetoko).trim().toUpperCase();
+            const distinctRabs = new Set();
+            state.rekapRab.forEach(item => {
+                if (String(item.kodetoko).trim().toUpperCase() === code) {
+                    const key = item.no_rab || `${item.tgl_usulan}_${item.ket_toko}`;
+                    distinctRabs.add(key);
+                }
+            });
+            return distinctRabs.size;
+        }
+
+        function getStoreResetCount(kodetoko) {
+            const code = String(kodetoko).trim().toUpperCase();
+            return state.resetLogs.filter(l => String(l.kodetoko).trim().toUpperCase() === code).length;
+        }
+
+        // Toko dianggap terkunci jika jumlah pengajuan RAB > jumlah reset yang dilakukan Admin
+        function getUsedStoreCodes() {
+            const used = new Set();
+            state.masterToko.forEach(t => {
+                const code = String(t.kodetoko).trim().toUpperCase();
+                if (getStoreSubmissionCount(code) > getStoreResetCount(code)) {
+                    used.add(code);
+                }
+            });
+            state.rekapRab.forEach(item => {
+                const code = String(item.kodetoko).trim().toUpperCase();
+                if (getStoreSubmissionCount(code) > getStoreResetCount(code)) {
+                    used.add(code);
+                }
+            });
+            return used;
+        }
+
+        function populateStoreDropdown() {
+            const select = document.getElementById('rab-kodetoko');
+            if (!select) return;
+            const currentVal = select.value;
+            const usedCodes = getUsedStoreCodes();
+
+            select.innerHTML = '<option value="">-- Pilih Kode Toko --</option>';
+
+            state.masterToko.forEach(toko => {
+                const code = String(toko.kodetoko).trim().toUpperCase();
+                const isUsed = usedCodes.has(code);
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = isUsed 
+                    ? `${code} - ${toko.namatoko} (Sudah Input)` 
+                    : `${code} - ${toko.namatoko}`;
+                option.disabled = isUsed;
+                select.appendChild(option);
+            });
+
+            if (currentVal && !usedCodes.has(currentVal)) {
+                select.value = currentVal;
+            } else {
+                select.value = '';
+                document.getElementById('rab-namatoko').value = '';
+            }
+        }
+
+        function handleStoreSelect(kodetoko) {
+            const namaInput = document.getElementById('rab-namatoko');
+            const warning = document.getElementById('store-warning');
+            const submitBtn = document.getElementById('btn-submit-rab');
+            const usedCodes = getUsedStoreCodes();
+
+            if (!kodetoko) {
+                namaInput.value = '';
+                warning.classList.add('hidden');
+                submitBtn.disabled = false;
+                return;
+            }
+
+            const toko = state.masterToko.find(t => String(t.kodetoko).trim().toUpperCase() === kodetoko);
+            namaInput.value = toko ? toko.namatoko : '';
+
+            if (usedCodes.has(kodetoko)) {
+                warning.classList.remove('hidden');
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                warning.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function resetRabItemsContainer() {
+            const container = document.getElementById('rab-items-container');
+            if (!container) return;
+            container.innerHTML = '';
+            addRabItemRow();
+        }
+
+        function addRabItemRow() {
+            const container = document.getElementById('rab-items-container');
+            const rowCount = container.children.length + 1;
+
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50/80 transition item-row';
+
+            let optionsHtml = '<option value="">-- Pilih Deskripsi Barang --</option>';
+            state.masterBarang.forEach(item => {
+                optionsHtml += `<option value="${item.deskripsi}" data-plu="${item.plu}">${item.deskripsi} (PLU: ${item.plu})</option>`;
+            });
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-4 text-center font-medium text-slate-500 row-number">${rowCount}</td>
+                <td class="py-2.5 px-4">
+                    <select required class="item-deskripsi w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none">
+                        ${optionsHtml}
+                    </select>
+                </td>
+                <td class="py-2.5 px-4">
+                    <input type="number" min="1" value="1" required class="item-qty w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-center font-semibold focus:ring-2 focus:ring-brand-500 outline-none">
+                </td>
+                <td class="py-2.5 px-4">
+                    <input type="text" placeholder="Opsional..." class="item-ket w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                </td>
+                <td class="py-2.5 px-4 text-center">
+                    <button type="button" onclick="removeRabItemRow(this)" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition" title="Hapus Baris">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </td>
+            `;
+
+            container.appendChild(tr);
+            lucide.createIcons();
+        }
+
+        function removeRabItemRow(btn) {
+            const container = document.getElementById('rab-items-container');
+            if (container.children.length <= 1) {
+                showToast('Minimal harus terdapat 1 baris item barang.', 'warning');
+                return;
+            }
+            btn.closest('tr').remove();
+            Array.from(container.children).forEach((row, idx) => {
+                row.querySelector('.row-number').textContent = idx + 1;
+            });
+        }
+
+        function resetRabForm() {
+            document.getElementById('form-rab').reset();
+            document.getElementById('rab-tgl').valueAsDate = new Date();
+            document.getElementById('rab-namatoko').value = '';
+            document.getElementById('store-warning').classList.add('hidden');
+            resetRabItemsContainer();
+        }
+
+        async function handleSaveRAB(e) {
+            e.preventDefault();
+
+            const manualNoRab = document.getElementById('rab-norab').value.trim().toUpperCase();
+            const kodetoko = document.getElementById('rab-kodetoko').value.trim().toUpperCase();
+            const namatoko = document.getElementById('rab-namatoko').value.trim();
+            const tgl_usulan = document.getElementById('rab-tgl').value;
+            const ket_toko = document.getElementById('rab-ket-toko').value.trim() || '-';
+
+            if (!kodetoko) {
+                showToast('Silakan pilih Kode Toko terlebih dahulu.', 'error');
+                return;
+            }
+
+            if (getUsedStoreCodes().has(kodetoko)) {
+                showToast(`Kode Toko ${kodetoko} sudah pernah diinput! Hubungi Admin untuk reset.`, 'error');
+                return;
+            }
+
+            const rows = document.querySelectorAll('#rab-items-container .item-row');
+            const newItems = [];
+            const seq = getStoreSubmissionCount(kodetoko) + 1;
+            const autoNoRab = seq > 1 
+                ? `RAB-${tgl_usulan.replace(/-/g, '')}-${kodetoko}-R${seq}`
+                : `RAB-${tgl_usulan.replace(/-/g, '')}-${kodetoko}`;
+            const no_rab = manualNoRab || autoNoRab;
+
+            rows.forEach(row => {
+                const selectEl = row.querySelector('.item-deskripsi');
+                const deskripsi = selectEl.value;
+                const selectedOpt = selectEl.options[selectEl.selectedIndex];
+                const plu = selectedOpt ? (selectedOpt.getAttribute('data-plu') || '-') : '-';
+                const qty = parseInt(row.querySelector('.item-qty').value, 10);
+                const ket_item = row.querySelector('.item-ket').value.trim() || '-';
+
+                if (deskripsi && qty > 0) {
+                    newItems.push({
+                        no_rab,
+                        kodetoko,
+                        namatoko,
+                        ket_toko,
+                        tgl_usulan,
+                        plu,
+                        deskripsi,
+                        qty,
+                        ket_item
+                    });
+                }
+            });
+
+            if (newItems.length === 0) {
+                showToast('Pastikan minimal 1 item barang telah dipilih.', 'error');
+                return;
+            }
+
+            const submitBtn = document.getElementById('btn-submit-rab');
+            const originalBtnHtml = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
+            lucide.createIcons();
+
+            state.rekapRab.push(...newItems);
+            saveLocalData();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'add_rab', seq, items: newItems });
+                } catch (err) {
+                    console.error('Gagal mengirim ke spreadsheet:', err);
+                }
+            }
+
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+            resetRabForm();
+            refreshAllViews();
+            showToast(`Usulan RAB (${no_rab}) berhasil disimpan!`, 'success');
+        }
+
+        // Render Tabel Pencarian RAB (Hanya Kode Toko, Tanggal Pengajuan, No RAB, Keterangan)
+        function renderRabTable() {
+            const tbody = document.getElementById('rab-store-list');
+            const countSpan = document.getElementById('total-rab-count');
+            if (!tbody) return;
+
+            const keyword = document.getElementById('search-rab').value.toLowerCase().trim();
+
+            // Kelompokkan data RAB berdasarkan No RAB / Kode Toko
+            const groupedMap = new Map();
+            state.rekapRab.forEach(item => {
+                const code = String(item.kodetoko).trim().toUpperCase();
+                const fallbackNoRab = `RAB-${String(item.tgl_usulan || '').replace(/-/g, '')}-${code}`;
+                const noRab = item.no_rab || fallbackNoRab;
+
+                if (!groupedMap.has(noRab)) {
+                    groupedMap.set(noRab, {
+                        no_rab: noRab,
+                        kodetoko: code,
+                        namatoko: item.namatoko,
+                        tgl_usulan: item.tgl_usulan,
+                        ket_toko: item.ket_toko || '-',
+                        items: []
+                    });
+                }
+                groupedMap.get(noRab).items.push(item);
+            });
+
+            const allGroups = Array.from(groupedMap.values());
+            const filtered = allGroups.filter(g => {
+                if (!keyword) return true;
+                return (
+                    g.kodetoko.toLowerCase().includes(keyword) ||
+                    g.no_rab.toLowerCase().includes(keyword) ||
+                    String(g.ket_toko).toLowerCase().includes(keyword)
+                );
+            });
+
+            if (countSpan) countSpan.textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="py-10 text-center text-slate-400">
+                            <div class="flex flex-col items-center justify-center gap-2">
+                                <i data-lucide="inbox" class="w-8 h-8 text-slate-300"></i>
+                                <p>Belum ada data pengajuan RAB yang cocok.</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(g => {
+                const isSelected = state.selectedDetailNoRab === g.no_rab;
+                return `
+                    <tr onclick="selectRabStore('${g.no_rab.replace(/'/g, "\\'")}')" class="cursor-pointer transition ${isSelected ? 'bg-brand-50/90 hover:bg-brand-50' : 'hover:bg-slate-50'}">
+                        <td class="py-3.5 px-5 font-bold text-brand-700">
+                            <span class="inline-flex items-center gap-1.5 underline decoration-brand-300 underline-offset-4">
+                                ${g.kodetoko}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-5 text-slate-600 whitespace-nowrap">${formatDateIndo(g.tgl_usulan)}</td>
+                        <td class="py-3.5 px-5 font-mono text-xs font-semibold text-slate-800">${g.no_rab}</td>
+                        <td class="py-3.5 px-5 text-slate-700">${g.ket_toko}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            if (state.selectedDetailNoRab) {
+                const stillExists = allGroups.find(g => g.no_rab === state.selectedDetailNoRab);
+                if (stillExists) {
+                    showRabDetailContent(stillExists);
+                } else {
+                    closeRabDetail();
+                }
+            }
+
+            lucide.createIcons();
+        }
+
+        function selectRabStore(noRab) {
+            state.selectedDetailNoRab = noRab;
+            renderRabTable();
+            const panel = document.getElementById('rab-detail-panel');
+            if (panel) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function showRabDetailContent(group) {
+            const panel = document.getElementById('rab-detail-panel');
+            if (!panel) return;
+
+            document.getElementById('detail-kodetoko').textContent = group.kodetoko;
+            document.getElementById('detail-norab').textContent = group.no_rab;
+            document.getElementById('detail-namatoko').textContent = group.namatoko;
+            document.getElementById('detail-tgl').textContent = formatDateIndo(group.tgl_usulan);
+            document.getElementById('detail-kettoko').textContent = group.ket_toko;
+
+            const tbody = document.getElementById('detail-items-body');
+            tbody.innerHTML = group.items.map((item, idx) => {
+                const foundMaster = state.masterBarang.find(b => b.deskripsi === item.deskripsi);
+                const plu = item.plu || (foundMaster ? foundMaster.plu : '-');
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="py-2.5 px-4 text-center text-slate-500">${idx + 1}</td>
+                        <td class="py-2.5 px-4 font-mono font-semibold text-slate-700">${plu}</td>
+                        <td class="py-2.5 px-4 font-medium text-slate-800">${item.deskripsi}</td>
+                        <td class="py-2.5 px-4 text-center">
+                            <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                                ${item.qty}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-4 text-slate-600">${item.ket_item || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            panel.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeRabDetail() {
+            state.selectedDetailNoRab = null;
+            const panel = document.getElementById('rab-detail-panel');
+            if (panel) panel.classList.add('hidden');
+            renderRabTable();
+        }
+
+        // ===================================================================
+        // EXPORT DATA (SEMUA RAB & DETAIL PER TOKO)
+        // ===================================================================
+        function getAllRabForExport() {
+            const keyword = document.getElementById('search-rab').value.toLowerCase().trim();
+            return state.rekapRab.filter(item => {
+                if (!keyword) return true;
+                const code = String(item.kodetoko).toLowerCase();
+                const noRab = String(item.no_rab || `RAB-${String(item.tgl_usulan || '').replace(/-/g, '')}-${item.kodetoko}`).toLowerCase();
+                const ket = String(item.ket_toko || '').toLowerCase();
+                return code.includes(keyword) || noRab.includes(keyword) || ket.includes(keyword);
+            });
+        }
+
+        function getSelectedDetailRabForExport() {
+            if (!state.selectedDetailNoRab) return [];
+            return state.rekapRab.filter(item => {
+                const code = String(item.kodetoko).toUpperCase();
+                const fallbackNoRab = `RAB-${String(item.tgl_usulan || '').replace(/-/g, '')}-${code}`;
+                const noRab = item.no_rab || fallbackNoRab;
+                return noRab === state.selectedDetailNoRab;
+            });
+        }
+
+        function formatRabRowsForExport(data) {
+            return data.map((item, idx) => {
+                const foundMaster = state.masterBarang.find(b => b.deskripsi === item.deskripsi);
+                const plu = item.plu || (foundMaster ? foundMaster.plu : '-');
+                return {
+                    'No': idx + 1,
+                    'No RAB': item.no_rab || `RAB-${String(item.tgl_usulan || '').replace(/-/g, '')}-${item.kodetoko}`,
+                    'Kode Toko': item.kodetoko,
+                    'Nama Toko': item.namatoko,
+                    'Tanggal Usulan': formatDateIndo(item.tgl_usulan),
+                    'Keterangan Toko': item.ket_toko,
+                    'PLU': plu,
+                    'Deskripsi Barang': item.deskripsi,
+                    'Qty': item.qty,
+                    'Keterangan Item': item.ket_item
+                };
+            });
+        }
+
+        function downloadExcelFile(data, sheetName, filename, successMsg) {
+            if (data.length === 0) {
+                showToast('Tidak ada data RAB untuk di-export.', 'warning');
+                return;
+            }
+            const formatted = formatRabRowsForExport(data);
+            const ws = XLSX.utils.json_to_sheet(formatted);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            XLSX.writeFile(wb, filename);
+            showToast(successMsg, 'success');
+        }
+
+        function downloadCsvFile(data, filename, successMsg) {
+            if (data.length === 0) {
+                showToast('Tidak ada data RAB untuk di-export.', 'warning');
+                return;
+            }
+            const headers = ['No', 'No RAB', 'Kode Toko', 'Nama Toko', 'Tanggal Usulan', 'Keterangan Toko', 'PLU', 'Deskripsi Barang', 'Qty', 'Keterangan Item'];
+            const rows = data.map((item, idx) => {
+                const foundMaster = state.masterBarang.find(b => b.deskripsi === item.deskripsi);
+                const plu = item.plu || (foundMaster ? foundMaster.plu : '-');
+                return [
+                    idx + 1,
+                    `"${item.no_rab || `RAB-${String(item.tgl_usulan || '').replace(/-/g, '')}-${item.kodetoko}`}"`,
+                    `"${item.kodetoko}"`,
+                    `"${item.namatoko}"`,
+                    `"${formatDateIndo(item.tgl_usulan)}"`,
+                    `"${String(item.ket_toko || '').replace(/"/g, '""')}"`,
+                    `"${plu}"`,
+                    `"${String(item.deskripsi || '').replace(/"/g, '""')}"`,
+                    item.qty,
+                    `"${String(item.ket_item || '').replace(/"/g, '""')}"`
+                ];
+            });
+
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast(successMsg, 'success');
+        }
+
+        function exportAllRabToExcel() {
+            const data = getAllRabForExport();
+            const dateStr = new Date().toISOString().slice(0, 10);
+            downloadExcelFile(data, 'Semua_Rekap_RAB', `Semua_Rekap_RAB_${dateStr}.xlsx`, 'File Excel Semua RAB berhasil diunduh!');
+        }
+
+        function exportAllRabToCSV() {
+            const data = getAllRabForExport();
+            const dateStr = new Date().toISOString().slice(0, 10);
+            downloadCsvFile(data, `Semua_Rekap_RAB_${dateStr}.csv`, 'File CSV Semua RAB berhasil diunduh!');
+        }
+
+        function exportDetailRabToExcel() {
+            const data = getSelectedDetailRabForExport();
+            if (data.length === 0) {
+                showToast('Pilih salah satu Kode Toko terlebih dahulu.', 'warning');
+                return;
+            }
+            const first = data[0];
+            const safeNoRab = String(first.no_rab || first.kodetoko).replace(/[^a-zA-Z0-9-_]/g, '_');
+            downloadExcelFile(data, `Detail_${first.kodetoko}`, `Detail_RAB_${safeNoRab}.xlsx`, `Detail RAB ${first.kodetoko} berhasil diunduh!`);
+        }
+
+        function exportDetailRabToCSV() {
+            const data = getSelectedDetailRabForExport();
+            if (data.length === 0) {
+                showToast('Pilih salah satu Kode Toko terlebih dahulu.', 'warning');
+                return;
+            }
+            const first = data[0];
+            const safeNoRab = String(first.no_rab || first.kodetoko).replace(/[^a-zA-Z0-9-_]/g, '_');
+            downloadCsvFile(data, `Detail_RAB_${safeNoRab}.csv`, `File CSV Detail RAB ${first.kodetoko} berhasil diunduh!`);
+        }
+
+        function exportDetailRabToPDF() {
+            const data = getSelectedDetailRabForExport();
+            if (data.length === 0) {
+                showToast('Pilih salah satu Kode Toko terlebih dahulu.', 'warning');
+                return;
+            }
+
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showToast('Library PDF sedang dimuat, silakan coba sesaat lagi.', 'warning');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const first = data[0];
+            const noRab = first.no_rab || `RAB-${String(first.tgl_usulan || '').replace(/-/g, '')}-${first.kodetoko}`;
+
+            // Header Dokumen
+            doc.setFillColor(30, 58, 138);
+            doc.rect(14, 14, 182, 14, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DETAIL USULAN RENCANA ANGGARAN BIAYA (RAB)', 105, 23, { align: 'center' });
+
+            // Informasi Toko & Pengajuan
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(9.5);
+            doc.setFont('helvetica', 'normal');
+
+            const infoY = 36;
+            doc.setFont('helvetica', 'bold');
+            doc.text('No. RAB', 14, infoY);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`: ${noRab}`, 48, infoY);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Tanggal Usulan', 120, infoY);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`: ${formatDateIndo(first.tgl_usulan)}`, 152, infoY);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Kode / Nama Toko', 14, infoY + 6);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`: ${first.kodetoko} - ${first.namatoko}`, 48, infoY + 6);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Keterangan', 14, infoY + 12);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`: ${first.ket_toko || '-'}`, 48, infoY + 12);
+
+            // Tabel Item Barang
+            const tableBody = data.map((item, idx) => {
+                const foundMaster = state.masterBarang.find(b => b.deskripsi === item.deskripsi);
+                const plu = item.plu || (foundMaster ? foundMaster.plu : '-');
+                return [
+                    idx + 1,
+                    plu,
+                    item.deskripsi,
+                    item.qty,
+                    item.ket_item || '-'
+                ];
+            });
+
+            doc.autoTable({
+                startY: infoY + 18,
+                head: [['No', 'PLU', 'Deskripsi Barang', 'Qty', 'Keterangan Item']],
+                body: tableBody,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [37, 99, 235],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    halign: 'center',
+                    fontSize: 9
+                },
+                bodyStyles: {
+                    fontSize: 8.5,
+                    textColor: [30, 41, 59]
+                },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 12 },
+                    1: { halign: 'center', cellWidth: 26 },
+                    2: { cellWidth: 74 },
+                    3: { halign: 'center', cellWidth: 18 },
+                    4: { cellWidth: 52 }
+                },
+                margin: { left: 14, right: 14 }
+            });
+
+            // Footer Tanda Tangan & Waktu Cetak
+            const finalY = doc.lastAutoTable.finalY + 14;
+            doc.setFontSize(8.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, finalY);
+
+            const safeNoRab = String(noRab).replace(/[^a-zA-Z0-9-_]/g, '_');
+            doc.save(`Detail_RAB_${safeNoRab}.pdf`);
+            showToast(`File PDF Detail RAB ${first.kodetoko} berhasil diunduh!`, 'success');
+        }
+
+        // ===================================================================
+        // LOGIKA HALAMAN ADMIN (MASTER BARANG, MASTER TOKO & SPREADSHEET)
+        // ===================================================================
+        function renderMasterBarangTable() {
+            const tbody = document.getElementById('table-barang-body');
+            if (!tbody) return;
+            const keyword = document.getElementById('search-barang').value.toLowerCase().trim();
+
+            const filtered = state.masterBarang.filter(b =>
+                String(b.plu).toLowerCase().includes(keyword) ||
+                String(b.deskripsi).toLowerCase().includes(keyword)
+            );
+
+            document.getElementById('count-barang').textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-400">Tidak ada data barang.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((b, idx) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 text-slate-500">${idx + 1}</td>
+                    <td class="py-2.5 px-4 font-mono font-semibold text-slate-700">${b.plu}</td>
+                    <td class="py-2.5 px-4 font-medium text-slate-800">${b.deskripsi}</td>
+                    <td class="py-2.5 px-4 text-center">
+                        <button onclick="deleteMasterBarang('${b.plu}')" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition" title="Hapus Barang">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        async function handleAddBarang(e) {
+            e.preventDefault();
+            const plu = document.getElementById('input-plu').value.trim();
+            const deskripsi = document.getElementById('input-deskripsi-barang').value.trim().toUpperCase();
+
+            if (state.masterBarang.some(b => String(b.plu) === plu)) {
+                showToast(`PLU ${plu} sudah terdaftar!`, 'error');
+                return;
+            }
+
+            const newItem = { plu, deskripsi };
+            state.masterBarang.push(newItem);
+            saveLocalData();
+            e.target.reset();
+            refreshAllViews();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'add_barang', data: newItem });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            showToast('Master barang berhasil ditambahkan!', 'success');
+        }
+
+        async function deleteMasterBarang(plu) {
+            state.masterBarang = state.masterBarang.filter(b => String(b.plu) !== String(plu));
+            saveLocalData();
+            refreshAllViews();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'delete_barang', plu });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            showToast(`Barang PLU ${plu} dihapus.`, 'info');
+        }
+
+        function renderMasterTokoTable() {
+            const tbody = document.getElementById('table-toko-body');
+            if (!tbody) return;
+            const keyword = document.getElementById('search-toko').value.toLowerCase().trim();
+            const usedCodes = getUsedStoreCodes();
+
+            const filtered = state.masterToko.filter(t =>
+                String(t.kodetoko).toLowerCase().includes(keyword) ||
+                String(t.namatoko).toLowerCase().includes(keyword)
+            );
+
+            document.getElementById('count-toko').textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">Tidak ada data toko.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((t, idx) => {
+                const code = String(t.kodetoko).trim().toUpperCase();
+                const isUsed = usedCodes.has(code);
+                const storeLogs = state.resetLogs.filter(l => String(l.kodetoko).trim().toUpperCase() === code);
+                const lastReset = storeLogs.length > 0 ? storeLogs[storeLogs.length - 1] : null;
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="py-2.5 px-4 text-slate-500">${idx + 1}</td>
+                        <td class="py-2.5 px-4 font-bold text-slate-800">${code}</td>
+                        <td class="py-2.5 px-4 text-slate-700">
+                            <div>${t.namatoko}</div>
+                            ${lastReset ? `<div class="text-[11px] text-amber-700 mt-0.5">Riwayat Reset (${storeLogs.length}x): ${lastReset.reason}</div>` : ''}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                            ${isUsed 
+                                ? '<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Sudah Input</span>'
+                                : '<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Tersedia</span>'
+                            }
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                            <div class="flex items-center justify-center gap-1.5">
+                                ${isUsed ? `
+                                    <button onclick="openResetModal('${code}', '${t.namatoko.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition" title="Buka akses input RAB ulang tanpa menghapus RAB lama">
+                                        Reset RAB
+                                    </button>
+                                ` : ''}
+                                <button onclick="deleteMasterToko('${code}')" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition" title="Hapus Toko">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        async function handleAddToko(e) {
+            e.preventDefault();
+            const kodetoko = document.getElementById('input-kodetoko').value.trim().toUpperCase();
+            const namatoko = document.getElementById('input-namatoko').value.trim().toUpperCase();
+
+            if (state.masterToko.some(t => String(t.kodetoko).trim().toUpperCase() === kodetoko)) {
+                showToast(`Kode Toko ${kodetoko} sudah terdaftar!`, 'error');
+                return;
+            }
+
+            const newToko = { kodetoko, namatoko };
+            state.masterToko.push(newToko);
+            saveLocalData();
+            e.target.reset();
+            refreshAllViews();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'add_toko', data: newToko });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            showToast('Master toko berhasil ditambahkan!', 'success');
+        }
+
+        async function deleteMasterToko(kodetoko) {
+            state.masterToko = state.masterToko.filter(t => String(t.kodetoko).trim().toUpperCase() !== kodetoko);
+            saveLocalData();
+            refreshAllViews();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'delete_toko', kodetoko });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            showToast(`Toko ${kodetoko} berhasil dihapus.`, 'info');
+        }
+
+        function openResetModal(kodetoko, namatoko) {
+            document.getElementById('reset-modal-kodetoko').value = kodetoko;
+            document.getElementById('reset-modal-store-label').textContent = `${kodetoko} - ${namatoko}`;
+            document.getElementById('reset-modal-reason').value = '';
+            document.getElementById('modal-reset-rab').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeResetModal() {
+            document.getElementById('modal-reset-rab').classList.add('hidden');
+        }
+
+        async function confirmResetRabToko(e) {
+            e.preventDefault();
+            const kodetoko = document.getElementById('reset-modal-kodetoko').value.trim().toUpperCase();
+            const reason = document.getElementById('reset-modal-reason').value.trim();
+
+            if (!reason) {
+                showToast('Keterangan alasan reset wajib diisi!', 'error');
+                return;
+            }
+
+            // Catat log reset tanpa menghapus data rekapRab yang sudah masuk
+            state.resetLogs.push({
+                kodetoko,
+                reason,
+                timestamp: new Date().toISOString()
+            });
+
+            saveLocalData();
+            closeResetModal();
+            refreshAllViews();
+
+            if (state.gasUrl) {
+                try {
+                    await postToGas({ action: 'reset_rab_toko', kodetoko, reason });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            showToast(`Akses RAB Toko ${kodetoko} berhasil dibuka kembali! Data RAB lama tetap tersimpan.`, 'success');
+        }
+
+        function saveGasUrl() {
+            const url = document.getElementById('gas-url-input').value.trim();
+            state.gasUrl = url;
+            localStorage.setItem('rab_gas_url', url);
+            updateConnectionBadge();
+            if (url) {
+                syncDataFromCloud();
+            } else {
+                showToast('URL Spreadsheet dikosongkan. Beralih ke Mode Lokal.', 'info');
+            }
+        }
+
+        async function syncDataFromCloud() {
+            if (!state.gasUrl) {
+                refreshAllViews();
+                showToast('Data lokal diperbarui.', 'info');
+                return;
+            }
+
+            const icon = document.getElementById('sync-icon-user');
+            if (icon) icon.classList.add('animate-spin');
+
+            try {
+                const response = await fetch(state.gasUrl);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    state.masterBarang = result.barang || [];
+                    state.masterToko = result.toko || [];
+                    state.rekapRab = result.rab || [];
+                    saveLocalData();
+                    refreshAllViews();
+                    showToast('Berhasil sinkronisasi data dengan Google Spreadsheet!', 'success');
+                } else {
+                    throw new Error('Format respon tidak valid');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('Gagal mengambil data dari Spreadsheet. Periksa URL Web App.', 'error');
+            } finally {
+                if (icon) icon.classList.remove('animate-spin');
+            }
+        }
+
+        async function postToGas(payload) {
+            if (!state.gasUrl) return;
+            await fetch(state.gasUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+
+        function copyGasCode() {
+            const codeEl = document.getElementById('gas-script-code');
+            const range = document.createRange();
+            range.selectNode(codeEl);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            try {
+                document.execCommand('copy');
+                showToast('Kode Google Apps Script berhasil disalin!', 'success');
+            } catch (err) {
+                showToast('Gagal menyalin kode otomatis.', 'error');
+            }
+            window.getSelection().removeAllRanges();
+        }
+
+        // ===================================================================
+        // UTILITAS (TOAST NOTIFIKASI & FORMAT TANGGAL)
+        // ===================================================================
+        function formatDateIndo(dateStr) {
+            if (!dateStr) return '-';
+            const cleanDate = String(dateStr).split('T')[0];
+            const parts = cleanDate.split('-');
+            if (parts.length !== 3) return cleanDate;
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const styles = {
+                success: 'bg-emerald-600 text-white border-emerald-700',
+                error: 'bg-red-600 text-white border-red-700',
+                warning: 'bg-amber-500 text-white border-amber-600',
+                info: 'bg-slate-800 text-white border-slate-900'
+            };
+
+            const icons = {
+                success: 'check-circle-2',
+                error: 'x-circle',
+                warning: 'alert-triangle',
+                info: 'info'
+            };
+
+            toast.className = `${styles[type]} border px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 text-sm font-medium pointer-events-auto transition-all duration-300 transform translate-y-0 opacity-100`;
+            toast.innerHTML = `
+                <i data-lucide="${icons[type]}" class="w-5 h-5 shrink-0"></i>
+                <span class="flex-grow">${message}</span>
+            `;
+
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
